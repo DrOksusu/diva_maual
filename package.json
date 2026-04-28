@@ -1,0 +1,13 @@
+{
+  "name": "diva-maual",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "template.md/pptx → PDF 자동 빌드 & GitHub Pages 배포",
+  "scripts": {
+    "build:md": "node scripts/md-to-pdf.mjs template.md public/template-md.pdf"
+  },
+  "devDependencies": {
+    "marked": "^15.0.7"
+  }
+}

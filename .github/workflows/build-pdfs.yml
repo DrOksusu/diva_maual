@@ -1,0 +1,115 @@
+name: Build & Deploy PDFs
+
+# template.md 또는 template.pptx 변경 시 자동으로 PDF 재생성하여 GitHub Pages에 배포
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LibreOffice + 한글 폰트
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libreoffice \
+            fonts-noto-cjk \
+            fonts-noto-cjk-extra \
+            fonts-nanum \
+            fonts-nanum-coding \
+            fonts-nanum-extra
+          fc-cache -f
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Convert PPTX → PDF (LibreOffice)
+        run: |
+          mkdir -p public
+          soffice --headless --convert-to pdf --outdir public template.pptx
+          mv public/template.pdf public/template-pptx.pdf
+          ls -la public/
+
+      - name: Convert MD → PDF (Chromium)
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: |
+          # ubuntu-latest에는 google-chrome이 사전 설치되어 있음
+          which google-chrome || sudo apt-get install -y wget && \
+            wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
+            sudo apt-get install -y ./google-chrome-stable_current_amd64.deb
+          node scripts/md-to-pdf.mjs template.md public/template-md.pdf
+          ls -la public/
+
+      - name: Generate index.html
+        run: |
+          TS=$(date -u +"%Y-%m-%d %H:%M UTC")
+          SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          cat > public/index.html <<HTML
+          <!doctype html>
+          <html lang="ko">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>강의 자료</title>
+            <style>
+              body { font-family: -apple-system, 'Malgun Gothic', 'Noto Sans KR', sans-serif; max-width: 720px; margin: 60px auto; padding: 0 20px; color: #1a202c; line-height: 1.6; }
+              h1 { font-size: 1.6rem; border-bottom: 3px solid #2b6cb0; padding-bottom: 8px; margin-bottom: 24px; }
+              ul { list-style: none; padding: 0; }
+              li { background: #f7fafc; padding: 14px 18px; margin: 10px 0; border-radius: 6px; border-left: 4px solid #2b6cb0; }
+              a { color: #2b6cb0; text-decoration: none; font-weight: 600; font-size: 1.05rem; }
+              a:hover { text-decoration: underline; }
+              .meta { color: #718096; font-size: 0.85rem; margin-top: 6px; }
+              .footer { margin-top: 32px; color: #a0aec0; font-size: 0.8rem; }
+            </style>
+          </head>
+          <body>
+            <h1>강의 자료</h1>
+            <ul>
+              <li>
+                <a href="template-md.pdf">통합 요약본 (PDF)</a>
+                <div class="meta">A4 분량 / Markdown 기반</div>
+              </li>
+              <li>
+                <a href="template-pptx.pdf">강의 슬라이드 (PDF)</a>
+                <div class="meta">PowerPoint → PDF</div>
+              </li>
+            </ul>
+            <p class="footer">최종 갱신: ${TS} (commit ${SHA})</p>
+          </body>
+          </html>
+          HTML
+          cat public/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
