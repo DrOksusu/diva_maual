@@ -3,41 +3,57 @@
 // 사용: node scripts/build-slides.mjs <output.pdf>
 import 'dotenv/config'
 import { Client, isFullPage } from '@notionhq/client'
-import { promises as fs, createWriteStream, existsSync } from 'node:fs'
+import { promises as fs, existsSync } from 'node:fs'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import https from 'node:https'
+import sharp from 'sharp'
 
 const execFileAsync = promisify(execFile)
+const MAX_DIMENSION = 1600 // 가로/세로 중 큰 쪽 최대 픽셀
+const JPEG_QUALITY = 85
 
-function downloadImage(url, dest) {
+function downloadToBuffer(url) {
   return new Promise((resolve, reject) => {
-    const file = createWriteStream(dest)
     const req = https.get(url, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        file.close()
-        fs.unlink(dest).catch(() => {})
-        downloadImage(res.headers.location, dest).then(resolve, reject)
+        downloadToBuffer(res.headers.location).then(resolve, reject)
         return
       }
       if (res.statusCode !== 200) {
         reject(new Error(`HTTP ${res.statusCode}`))
         return
       }
-      let total = 0
-      res.on('data', (c) => (total += c.length))
-      res.pipe(file)
-      file.on('finish', () => file.close(() => resolve(total)))
-      file.on('error', reject)
+      const chunks = []
+      res.on('data', (c) => chunks.push(c))
+      res.on('end', () => resolve(Buffer.concat(chunks)))
+      res.on('error', reject)
     })
     req.on('error', reject)
   })
 }
 
-function guessExt(url) {
-  const m = url.match(/\.(png|jpg|jpeg|gif|webp|svg)(\?|$)/i)
-  return m ? m[1].toLowerCase() : 'png'
+// 다운로드 + 리사이즈 + JPEG 압축. 결과 파일은 항상 .jpg
+async function downloadAndOptimize(url, destPath) {
+  const buffer = await downloadToBuffer(url)
+  try {
+    await sharp(buffer, { animated: false })
+      .resize({
+        width: MAX_DIMENSION,
+        height: MAX_DIMENSION,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
+      .toFile(destPath)
+  } catch (err) {
+    // sharp가 처리 못하는 포맷 (예: 일부 SVG)인 경우 원본 그대로 저장
+    await fs.writeFile(destPath.replace(/\.jpg$/, '.bin'), buffer)
+    throw new Error(`sharp 변환 실패: ${err.message}`)
+  }
+  const stat = await fs.stat(destPath)
+  return { bytes: stat.size, originalBytes: buffer.length }
 }
 
 async function fetchAllBlocks(client, blockId) {
@@ -177,6 +193,7 @@ async function main() {
 
   const sections = []
   let totalBytes = 0
+  let totalOriginalBytes = 0
   let imageCount = 0
 
   for (let i = 0; i < sample.length; i++) {
@@ -197,13 +214,13 @@ async function main() {
         if (b.type === 'image') {
           const url = b.image?.file?.url ?? b.image?.external?.url
           if (!url) continue
-          const ext = guessExt(url)
-          const filename = `${idNoDash}-${imgIdx}.${ext}`
+          const filename = `${idNoDash}-${imgIdx}.jpg`
           const localPath = path.join(buildDir, 'images', filename)
           try {
-            const bytes = await downloadImage(url, localPath)
+            const { bytes, originalBytes } = await downloadAndOptimize(url, localPath)
             images.push({ webPath: `images/${filename}`, bytes })
             totalBytes += bytes
+            totalOriginalBytes += originalBytes
             imgIdx++
             imageCount++
           } catch (err) {
@@ -237,10 +254,13 @@ async function main() {
   await execFileAsync(browser, args, { timeout: 600000 })
 
   const stat = await fs.stat(pdfAbs)
+  const ratio = totalOriginalBytes > 0
+    ? ((1 - totalBytes / totalOriginalBytes) * 100).toFixed(1)
+    : '0.0'
   console.log(`\n=== 완료 ===`)
   console.log(`- PDF: ${pdfAbs} (${(stat.size / 1024 / 1024).toFixed(1)} MB)`)
   console.log(`- 슬라이드: ${sections.reduce((acc, s) => acc + Math.max(1, s.images.length), 0) + 1}개`)
-  console.log(`- 이미지: ${imageCount}개 (${(totalBytes / 1024 / 1024).toFixed(1)} MB)`)
+  console.log(`- 이미지: ${imageCount}개 — 원본 ${(totalOriginalBytes / 1024 / 1024).toFixed(1)} MB → 압축 ${(totalBytes / 1024 / 1024).toFixed(1)} MB (${ratio}% 절감)`)
 }
 
 main().catch((err) => {
