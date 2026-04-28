@@ -12,22 +12,21 @@ GitHub Pages 활성화 후:
 
 ## 자동 갱신 방법
 
-```bash
-# 1) 슬라이드 또는 요약본 수정 (PowerPoint, 에디터 등)
-# 2) 변경사항 커밋 & 푸시
-git add template.md template.pptx
-git commit -m "update: 강의 자료 갱신"
-git push origin main
+| 변경 위치 | 갱신 방법 | 반영 시간 |
+|---|---|---|
+| **Notion 요약본 페이지** | 그냥 수정만 | 다음 새벽 5:07 KST 또는 수동 트리거 |
+| **Notion DB 강의 페이지** (이미지 추가/변경) | 그냥 수정만 | 다음 새벽 5:07 KST 또는 수동 트리거 |
+| `template.pptx` (수기 PPT) | git commit/push | 1~2분 |
 
-# 3) GitHub Actions가 1~2분 안에 자동 빌드 → 같은 URL에 새 PDF 반영
-```
+**수동 즉시 반영**: GitHub → Actions → "Build & Deploy PDFs" → "Run workflow" 클릭
 
 ## 변환 파이프라인
 
 | 입력 | 변환 | 출력 |
 |---|---|---|
-| `template.pptx` | LibreOffice (`soffice --headless --convert-to pdf`) | `public/template-pptx.pdf` |
-| `template.md` | marked (MD→HTML) + Chromium 헤드리스 (`--print-to-pdf`) | `public/template-md.pdf` |
+| Notion 요약 페이지 | API → MD → marked + Chromium | `template-md.pdf` |
+| Notion DB (페이지별 이미지) | API → 이미지 다운로드 + HTML → Chromium | `template-slides.pdf` |
+| `template.pptx` | LibreOffice | `template-pptx.pdf` |
 
 ## 로컬 테스트
 

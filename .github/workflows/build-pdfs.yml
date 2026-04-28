@@ -1,11 +1,21 @@
 name: Build & Deploy PDFs
 
-# template.md 또는 template.pptx 변경 시 자동으로 PDF 재생성하여 GitHub Pages에 배포
+# 트리거:
+#   - main 푸시 (소스 변경 시)
+#   - 매일 새벽 5:07 KST = 20:07 UTC 전날 (Notion 변경 자동 반영)
+#   - 수동 (workflow_dispatch)
 
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: '7 20 * * *'   # 매일 KST 05:07
   workflow_dispatch:
+    inputs:
+      slides_ratio:
+        description: '슬라이드 빌드 샘플 비율 (1.0 = 전체)'
+        required: false
+        default: '1.0'
 
 permissions:
   contents: read
@@ -19,6 +29,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      NOTION_SUMMARY_PAGE_ID: ${{ secrets.NOTION_SUMMARY_PAGE_ID }}
+      NOTION_SLIDES_DB_ID: ${{ secrets.NOTION_SLIDES_DB_ID }}
+      SLIDES_SAMPLE_RATIO: ${{ github.event.inputs.slides_ratio || '1.0' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -42,28 +57,41 @@ jobs:
 
       - run: npm ci
 
+      - name: Fetch Notion summary → template.md
+        run: |
+          node scripts/fetch-notion-md.mjs template.md
+          echo "--- template.md 첫 30줄 ---"
+          head -30 template.md
+          echo "--- 끝 ---"
+
       - name: Convert PPTX → PDF (LibreOffice)
         run: |
           mkdir -p public
           soffice --headless --convert-to pdf --outdir public template.pptx
           mv public/template.pdf public/template-pptx.pdf
-          ls -la public/
 
       - name: Convert MD → PDF (Chromium)
         env:
           CHROME_PATH: /usr/bin/google-chrome
         run: |
-          # ubuntu-latest에는 google-chrome이 사전 설치되어 있음
-          which google-chrome || sudo apt-get install -y wget && \
+          which google-chrome || (sudo apt-get install -y wget && \
             wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-            sudo apt-get install -y ./google-chrome-stable_current_amd64.deb
+            sudo apt-get install -y ./google-chrome-stable_current_amd64.deb)
           node scripts/md-to-pdf.mjs template.md public/template-md.pdf
-          ls -la public/
+
+      - name: Build slides PDF (Notion DB → 이미지 → 슬라이드)
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: |
+          node scripts/build-slides.mjs public/template-slides.pdf
 
       - name: Generate index.html
         run: |
           TS=$(date -u +"%Y-%m-%d %H:%M UTC")
           SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          MD_SIZE=$(du -h public/template-md.pdf | cut -f1)
+          PPT_SIZE=$(du -h public/template-pptx.pdf | cut -f1)
+          SLD_SIZE=$(du -h public/template-slides.pdf | cut -f1)
           cat > public/index.html <<HTML
           <!doctype html>
           <html lang="ko">
@@ -80,27 +108,32 @@ jobs:
               a:hover { text-decoration: underline; }
               .meta { color: #718096; font-size: 0.85rem; margin-top: 6px; }
               .footer { margin-top: 32px; color: #a0aec0; font-size: 0.8rem; }
+              .footer code { background: #edf2f7; padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
             </style>
           </head>
           <body>
             <h1>강의 자료</h1>
             <ul>
               <li>
-                <a href="template-md.pdf">통합 요약본 (PDF)</a>
-                <div class="meta">A4 분량 / Markdown 기반</div>
+                <a href="template-md.pdf">📘 통합 요약본 (PDF, ${MD_SIZE})</a>
+                <div class="meta">Notion 요약본 페이지 → 자동 추출</div>
               </li>
               <li>
-                <a href="template-pptx.pdf">강의 슬라이드 (PDF)</a>
-                <div class="meta">PowerPoint → PDF</div>
+                <a href="template-slides.pdf">🎬 강의 슬라이드 (PDF, ${SLD_SIZE})</a>
+                <div class="meta">Notion DB 페이지별 이미지 → 슬라이드 자동 생성</div>
+              </li>
+              <li>
+                <a href="template-pptx.pdf">📊 강의 슬라이드 (수기 PPT, ${PPT_SIZE})</a>
+                <div class="meta">PowerPoint → PDF 변환</div>
               </li>
             </ul>
-            <p class="footer">최종 갱신: ${TS} (commit ${SHA})</p>
+            <p class="footer">최종 갱신: ${TS} (commit <code>${SHA}</code>) · 매일 새벽 5:07 KST 자동 빌드</p>
           </body>
           </html>
           HTML
-          cat public/index.html
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ./public
 
