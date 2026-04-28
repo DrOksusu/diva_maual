@@ -98,15 +98,15 @@ jobs:
               * { box-sizing: border-box; }
               html, body { margin: 0; padding: 0; }
               body { font-family: -apple-system, 'Malgun Gothic', 'Noto Sans KR', sans-serif; color: #1a202c; padding: 16px; max-width: 1400px; margin: 0 auto; }
-              h1 { font-size: 1.4rem; margin: 0 0 6px; border-bottom: 3px solid #2b6cb0; padding-bottom: 6px; }
-              h2 { font-size: 1rem; font-weight: 600; margin: 18px 0 6px; color: #2b6cb0; }
-              iframe { width: 100%; border: 1px solid #e2e8f0; border-radius: 4px; display: block; }
-              iframe.summary { height: 85vh; }
-              iframe.slides { height: 90vh; }
+              h1 { font-size: 1.4rem; margin: 0 0 12px; border-bottom: 3px solid #2b6cb0; padding-bottom: 6px; }
+              h2 { font-size: 1rem; font-weight: 600; margin: 20px 0 8px; color: #2b6cb0; }
+              .pdf-container { background: #f7fafc; padding: 12px; border-radius: 4px; }
+              .pdf-page { display: block; margin: 0 auto 8px; max-width: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background: white; }
+              .pdf-page:last-child { margin-bottom: 0; }
+              .loading { text-align: center; padding: 40px; color: #718096; font-size: 0.9rem; }
               @media (max-width: 720px) {
                 body { padding: 8px; }
-                iframe.summary { height: 75vh; }
-                iframe.slides { height: 80vh; }
+                .pdf-container { padding: 8px; }
               }
             </style>
           </head>
@@ -114,10 +114,67 @@ jobs:
             <h1>강의 자료</h1>
 
             <h2>📘 통합 요약본</h2>
-            <iframe class="summary" src="template-md.pdf#toolbar=0&navpanes=0&view=FitH" title="통합 요약본"></iframe>
+            <div id="pdf-summary" class="pdf-container"><p class="loading">불러오는 중…</p></div>
 
             <h2>🎬 강의 슬라이드</h2>
-            <iframe class="slides" src="template-slides.pdf#toolbar=0&navpanes=0&view=FitH" title="강의 슬라이드"></iframe>
+            <div id="pdf-slides" class="pdf-container"><p class="loading">불러오는 중…</p></div>
+
+            <script type="module">
+              import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.min.mjs'
+              pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.worker.min.mjs'
+
+              const dpr = Math.min(window.devicePixelRatio || 1, 2)
+
+              async function renderPdf(url, containerId) {
+                const container = document.getElementById(containerId)
+                try {
+                  const pdf = await pdfjsLib.getDocument(url).promise
+                  container.innerHTML = ''
+                  const containerWidth = container.clientWidth - 24
+                  const firstPage = await pdf.getPage(1)
+                  const baseVp = firstPage.getViewport({ scale: 1 })
+                  const scale = containerWidth / baseVp.width
+                  const layoutVp = firstPage.getViewport({ scale })
+
+                  for (let i = 1; i <= pdf.numPages; i++) {
+                    const wrap = document.createElement('div')
+                    wrap.className = 'pdf-page'
+                    wrap.style.width = layoutVp.width + 'px'
+                    wrap.style.height = layoutVp.height + 'px'
+                    wrap.dataset.page = i
+                    container.appendChild(wrap)
+                  }
+
+                  const observer = new IntersectionObserver(async (entries) => {
+                    for (const entry of entries) {
+                      if (!entry.isIntersecting) continue
+                      const wrap = entry.target
+                      if (wrap.dataset.rendered) continue
+                      wrap.dataset.rendered = '1'
+                      observer.unobserve(wrap)
+                      const num = parseInt(wrap.dataset.page, 10)
+                      const page = await pdf.getPage(num)
+                      const renderVp = page.getViewport({ scale: scale * dpr })
+                      const canvas = document.createElement('canvas')
+                      canvas.width = renderVp.width
+                      canvas.height = renderVp.height
+                      canvas.style.width = layoutVp.width + 'px'
+                      canvas.style.height = layoutVp.height + 'px'
+                      canvas.style.display = 'block'
+                      wrap.appendChild(canvas)
+                      await page.render({ canvasContext: canvas.getContext('2d'), viewport: renderVp }).promise
+                    }
+                  }, { rootMargin: '400px 0px' })
+
+                  container.querySelectorAll('.pdf-page').forEach((el) => observer.observe(el))
+                } catch (err) {
+                  container.innerHTML = '<p class="loading">PDF 로드 실패: ' + err.message + '</p>'
+                }
+              }
+
+              renderPdf('template-md.pdf', 'pdf-summary')
+              renderPdf('template-slides.pdf', 'pdf-slides')
+            </script>
           </body>
           </html>
           HTML
