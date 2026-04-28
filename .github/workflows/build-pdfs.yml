@@ -87,11 +87,7 @@ jobs:
 
       - name: Generate index.html
         run: |
-          TS=$(date -u +"%Y-%m-%d %H:%M UTC")
-          SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          MD_SIZE=$(du -h public/template-md.pdf | cut -f1)
-          SLD_SIZE=$(du -h public/template-slides.pdf | cut -f1)
-          cat > public/index.html <<HTML
+          cat > public/index.html <<'HTML'
           <!doctype html>
           <html lang="ko">
           <head>
@@ -100,52 +96,28 @@ jobs:
             <title>강의 자료</title>
             <style>
               * { box-sizing: border-box; }
-              body { font-family: -apple-system, 'Malgun Gothic', 'Noto Sans KR', sans-serif; margin: 0; padding: 24px; max-width: 1400px; margin: 0 auto; color: #1a202c; }
-              header h1 { font-size: 1.5rem; border-bottom: 3px solid #2b6cb0; padding-bottom: 8px; margin: 0 0 8px; }
-              header .footer { color: #a0aec0; font-size: 0.8rem; margin: 0 0 20px; }
-              header .footer code { background: #edf2f7; padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
-              .pdf-section { margin-bottom: 28px; }
-              .pdf-section header { display: flex; align-items: baseline; justify-content: space-between; padding: 8px 12px; background: #2b6cb0; color: white; border-radius: 6px 6px 0 0; }
-              .pdf-section h2 { margin: 0; font-size: 1.05rem; font-weight: 600; }
-              .pdf-section .actions a { color: white; text-decoration: none; font-size: 0.85rem; opacity: 0.9; margin-left: 12px; }
-              .pdf-section .actions a:hover { opacity: 1; text-decoration: underline; }
-              iframe.pdf-frame { width: 100%; border: 1px solid #cbd5e0; border-top: none; border-radius: 0 0 6px 6px; display: block; }
-              iframe.summary { height: 80vh; }
+              html, body { margin: 0; padding: 0; }
+              body { font-family: -apple-system, 'Malgun Gothic', 'Noto Sans KR', sans-serif; color: #1a202c; padding: 16px; max-width: 1400px; margin: 0 auto; }
+              h1 { font-size: 1.4rem; margin: 0 0 6px; border-bottom: 3px solid #2b6cb0; padding-bottom: 6px; }
+              h2 { font-size: 1rem; font-weight: 600; margin: 18px 0 6px; color: #2b6cb0; }
+              iframe { width: 100%; border: 1px solid #e2e8f0; border-radius: 4px; display: block; }
+              iframe.summary { height: 85vh; }
               iframe.slides { height: 90vh; }
               @media (max-width: 720px) {
-                body { padding: 12px; }
-                iframe.summary { height: 70vh; }
-                iframe.slides { height: 75vh; }
+                body { padding: 8px; }
+                iframe.summary { height: 75vh; }
+                iframe.slides { height: 80vh; }
               }
             </style>
           </head>
           <body>
-            <header>
-              <h1>강의 자료</h1>
-              <p class="footer">최종 갱신: ${TS} (commit <code>${SHA}</code>) · 매일 새벽 5:07 KST 자동 빌드</p>
-            </header>
+            <h1>강의 자료</h1>
 
-            <section class="pdf-section">
-              <header>
-                <h2>📘 통합 요약본</h2>
-                <div class="actions">
-                  <a href="template-md.pdf" target="_blank">새 탭 열기</a>
-                  <a href="template-md.pdf" download>다운로드 (${MD_SIZE})</a>
-                </div>
-              </header>
-              <iframe class="pdf-frame summary" src="template-md.pdf#view=FitH" title="통합 요약본"></iframe>
-            </section>
+            <h2>📘 통합 요약본</h2>
+            <iframe class="summary" src="template-md.pdf#toolbar=0&navpanes=0&view=FitH" title="통합 요약본"></iframe>
 
-            <section class="pdf-section">
-              <header>
-                <h2>🎬 강의 슬라이드</h2>
-                <div class="actions">
-                  <a href="template-slides.pdf" target="_blank">새 탭 열기</a>
-                  <a href="template-slides.pdf" download>다운로드 (${SLD_SIZE})</a>
-                </div>
-              </header>
-              <iframe class="pdf-frame slides" src="template-slides.pdf#view=FitH" title="강의 슬라이드"></iframe>
-            </section>
+            <h2>🎬 강의 슬라이드</h2>
+            <iframe class="slides" src="template-slides.pdf#toolbar=0&navpanes=0&view=FitH" title="강의 슬라이드"></iframe>
           </body>
           </html>
           HTML
