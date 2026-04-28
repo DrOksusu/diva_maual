@@ -254,13 +254,13 @@ async function main() {
   await execFileAsync(browser, args, { timeout: 600000 })
 
   const stat = await fs.stat(pdfAbs)
-  const ratio = totalOriginalBytes > 0
+  const compressionPct = totalOriginalBytes > 0
     ? ((1 - totalBytes / totalOriginalBytes) * 100).toFixed(1)
     : '0.0'
   console.log(`\n=== 완료 ===`)
   console.log(`- PDF: ${pdfAbs} (${(stat.size / 1024 / 1024).toFixed(1)} MB)`)
   console.log(`- 슬라이드: ${sections.reduce((acc, s) => acc + Math.max(1, s.images.length), 0) + 1}개`)
-  console.log(`- 이미지: ${imageCount}개 — 원본 ${(totalOriginalBytes / 1024 / 1024).toFixed(1)} MB → 압축 ${(totalBytes / 1024 / 1024).toFixed(1)} MB (${ratio}% 절감)`)
+  console.log(`- 이미지: ${imageCount}개 — 원본 ${(totalOriginalBytes / 1024 / 1024).toFixed(1)} MB → 압축 ${(totalBytes / 1024 / 1024).toFixed(1)} MB (${compressionPct}% 절감)`)
 }
 
 main().catch((err) => {
